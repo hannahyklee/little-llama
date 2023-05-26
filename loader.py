@@ -16,7 +16,7 @@ from torch.utils.data import TensorDataset
 # max_batch_size(or less for the very last chunk) x max_seq_len.
 # batch will have a fixed sequence length and multiple documents can be present in each batch.
 # So a batch could look like:
-# [stuff from some document <eos> <bos> This class sucks <eos> <bos> It really does!<eos><bos> more stuff]
+# [stuff from some document <eos> <bos> This class is about ML <eos> <bos> It is taught at UW!<eos><bos> more stuff]
 class DataLoader:
 
     def __init__(self, model_args: ModelArgs, train=True):
