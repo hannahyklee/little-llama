@@ -19,12 +19,14 @@ from fairscale.nn.model_parallel.layers import (
 
 @dataclass
 class ModelArgs:
-    dim: int = 512
-    n_layers: int = 8
-    n_heads: int = 8
+    dim: int = 512  # size of token embedding
+    n_layers: int = 8   # number of transformer blocks(attention + feed fw)
+    n_heads: int = 8   # number of attention heads. Each head will have dimension head_dim = dim/n_heads
     vocab_size: int = -1  # defined later by tokenizer
     multiple_of: int = 256  # make SwiGLU hidden layer size multiple of large power of 2
-    norm_eps: float = 1e-5
+                            # don't quite understand exactly what this is, but the hidden dimension of the ff layer will
+                            # be will be a power of 2 close to 2/3 * (4dim) * (dim/multiple_of)
+    norm_eps: float = 1e-5  # rmsnorm arg to prevent div by 0
 
     max_batch_size: int = 32
     max_seq_len: int = 2048
@@ -78,7 +80,7 @@ class Attention(nn.Module):
         super().__init__()
 
         self.n_local_heads = args.n_heads // fs_init.get_model_parallel_world_size()
-        self.head_dim = args.dim // args.n_heads
+        self.head_dim = args.dim // args.n_heads    # attention head dim
 
         self.wq = ColumnParallelLinear(
             args.dim,
@@ -117,15 +119,22 @@ class Attention(nn.Module):
         ).cuda()
 
     def forward(self, x: torch.Tensor, start_pos: int, freqs_cis: torch.Tensor, mask: Optional[torch.Tensor]):
+
+        # batch x seq_len x dim
         bsz, seqlen, _ = x.shape
+        # linear transformations to get Q, W, V
         xq, xk, xv = self.wq(x), self.wk(x), self.wv(x)
 
+        # split each Q, W, V into Q_i, W_i, V_i for each attention head.
+        # xq, xk, xv are tensors of batch x seq_len x n_heads(n local heads probably has to do with parallel) x head_dim
         xq = xq.view(bsz, seqlen, self.n_local_heads, self.head_dim)
         xk = xk.view(bsz, seqlen, self.n_local_heads, self.head_dim)
         xv = xv.view(bsz, seqlen, self.n_local_heads, self.head_dim)
 
+        # apply rotary(see paper for explanation) positional embeddings
         xq, xk = apply_rotary_emb(xq, xk, freqs_cis=freqs_cis)
 
+        # some parallel comp. stuff I don't quite get
         self.cache_k = self.cache_k.to(xq)
         self.cache_v = self.cache_v.to(xq)
 
@@ -135,29 +144,37 @@ class Attention(nn.Module):
         keys = self.cache_k[:bsz, : start_pos + seqlen]
         values = self.cache_v[:bsz, : start_pos + seqlen]
 
-        xq = xq.transpose(1, 2)
-        keys = keys.transpose(1, 2)
-        values = values.transpose(1, 2)
+        xq = xq.transpose(1, 2)  # batch x n_heads x seq_len x head_dim
+        keys = keys.transpose(1, 2)   # batch x n_heads x seq_len x head_dim
+        values = values.transpose(1, 2)  # batch x n_heads x seq_len x head_dim
+
+        # QK^T/sqrt(head_dim) results in batch x n_heads x seq_len x seq_len
         scores = torch.matmul(xq, keys.transpose(2, 3)) / math.sqrt(self.head_dim)
+
+        # why +? feel it should be times?
         if mask is not None:
             scores = scores + mask  # (bs, n_local_heads, slen, cache_len + slen)
-        scores = F.softmax(scores.float(), dim=-1).type_as(xq)
+        scores = F.softmax(scores.float(), dim=-1).type_as(xq)  # compute scores
         output = torch.matmul(scores, values)  # (bs, n_local_heads, slen, head_dim)
         output = output.transpose(
             1, 2
-        ).contiguous().view(bsz, seqlen, -1)
+        ).contiguous().view(bsz, seqlen, -1)  # (bs, slen, head_dim * n_heads)
 
+        # final linear layer
         return self.wo(output)
 
 
 class FeedForward(nn.Module):
+
     def __init__(
         self,
-        dim: int,
-        hidden_dim: int,
-        multiple_of: int,
+        dim: int,   # token embedding
+        hidden_dim: int,   # this is set to 4 * dim?
+        multiple_of: int,   # this is some magic
     ):
         super().__init__()
+
+        # but hidden dim will be a power of 2 close to 2/3 * (4dim) * (dim/multiple_of)
         hidden_dim = int(2 * hidden_dim / 3)
         hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) // multiple_of)
 
@@ -171,12 +188,14 @@ class FeedForward(nn.Module):
             dim, hidden_dim, bias=False, gather_output=False, init_method=lambda x: x
         )
 
+    # so SwiGLU is the operation inside self.w2. So SwiGLU(x) = Swish_activation(W_1x) * W3x
     def forward(self, x):
         return self.w2(F.silu(self.w1(x)) * self.w3(x))
 
 
 class TransformerBlock(nn.Module):
     def __init__(self, layer_id: int, args: ModelArgs):
+
         super().__init__()
         self.n_heads = args.n_heads
         self.dim = args.dim
@@ -189,6 +208,7 @@ class TransformerBlock(nn.Module):
         self.attention_norm = RMSNorm(args.dim, eps=args.norm_eps)
         self.ffn_norm = RMSNorm(args.dim, eps=args.norm_eps)
 
+    # transformer operation is (x -> rms_norm -> (attention + x) = h -> rms_norm -> ff + h
     def forward(self, x: torch.Tensor, start_pos: int, freqs_cis: torch.Tensor, mask: Optional[torch.Tensor]):
         h = x + self.attention.forward(self.attention_norm(x), start_pos, freqs_cis, mask)
         out = h + self.feed_forward.forward(self.ffn_norm(h))
@@ -221,6 +241,7 @@ class Transformer(nn.Module):
 
     @torch.inference_mode()
     def forward(self, tokens: torch.Tensor, start_pos: int):
+
         _bsz, seqlen = tokens.shape
         h = self.tok_embeddings(tokens)
         self.freqs_cis = self.freqs_cis.to(h.device)

@@ -21,17 +21,22 @@ class LLaMA:
         temperature: float = 0.8,
         top_p: float = 0.95,
     ) -> List[str]:
+
         bsz = len(prompts)
         params = self.model.params
         assert bsz <= params.max_batch_size, (bsz, params.max_batch_size)
 
+        # encode prompts
         prompt_tokens = [self.tokenizer.encode(x, bos=True, eos=False) for x in prompts]
 
+        # compute the min and max prompt size
         min_prompt_size = min([len(t) for t in prompt_tokens])
         max_prompt_size = max([len(t) for t in prompt_tokens])
 
+        # set total length to max_prompt + max_gen or max_seq_len
         total_len = min(params.max_seq_len, max_gen_len + max_prompt_size)
 
+        # pad tokens to with -1 and add the real tokens
         tokens = torch.full((bsz, total_len), self.tokenizer.pad_id).cuda().long()
         for k, t in enumerate(prompt_tokens):
             tokens[k, : len(t)] = torch.tensor(t).long()
