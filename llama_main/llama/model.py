@@ -16,20 +16,36 @@ from fairscale.nn.model_parallel.layers import (
     ColumnParallelLinear,
 )
 
+# from ... import modelArgs
 
-@dataclass
+# @dataclass
+# class ModelArgs:
+#     dim: int = 512  # size of token embedding
+#     n_layers: int = 8   # number of transformer blocks(attention + feed fw)
+#     n_heads: int = 8   # number of attention heads. Each head will have dimension head_dim = dim/n_heads
+#     vocab_size: int = -1  # defined later by tokenizer
+#     multiple_of: int = 256  # make SwiGLU hidden layer size multiple of large power of 2
+#                             # don't quite understand exactly what this is, but the hidden dimension of the ff layer will
+#                             # be will be a power of 2 close to 2/3 * (4dim) * (dim/multiple_of)
+#     norm_eps: float = 1e-5  # rmsnorm arg to prevent div by 0
+
+#     max_batch_size: int = 32
+#     max_seq_len: int = 2048
 class ModelArgs:
-    dim: int = 512  # size of token embedding
-    n_layers: int = 8   # number of transformer blocks(attention + feed fw)
+    # Defines the model args class which contains the model's parameters, tokenizer stuff, and training parameters
+    tokenizer: str = "llama"
+
+    dim: int = 512  # size of embeddings going between transformer blocks
+    n_layers: int = 8   # number of transformer blocks(attention + feed forward)
     n_heads: int = 8   # number of attention heads. Each head will have dimension head_dim = dim/n_heads
     vocab_size: int = -1  # defined later by tokenizer
-    multiple_of: int = 256  # make SwiGLU hidden layer size multiple of large power of 2
-                            # don't quite understand exactly what this is, but the hidden dimension of the ff layer will
-                            # be will be a power of 2 close to 2/3 * (4dim) * (dim/multiple_of)
+    multiple_of: int = 256   # don't quite understand exactly what this is, but the hidden dimension of the ff layer will
+                             # be will be a power of 2 close to 2/3 * (4dim) * (dim/multiple_of)
     norm_eps: float = 1e-5  # rmsnorm arg to prevent div by 0
 
     max_batch_size: int = 32
-    max_seq_len: int = 2048
+    max_seq_len: int = 512
+    max_chunk_size: int = 512  # number of documents to load at a time in memory
 
 
 class RMSNorm(torch.nn.Module):
@@ -151,7 +167,6 @@ class Attention(nn.Module):
         # QK^T/sqrt(head_dim) results in batch x n_heads x seq_len x seq_len
         scores = torch.matmul(xq, keys.transpose(2, 3)) / math.sqrt(self.head_dim)
 
-        # why +? feel it should be times?
         if mask is not None:
             scores = scores + mask  # (bs, n_local_heads, slen, cache_len + slen)
         scores = F.softmax(scores.float(), dim=-1).type_as(xq)  # compute scores
@@ -239,7 +254,7 @@ class Transformer(nn.Module):
             self.params.dim // self.params.n_heads, self.params.max_seq_len * 2
         )
 
-    @torch.inference_mode()
+    # @torch.inference_mode()
     def forward(self, tokens: torch.Tensor, start_pos: int):
 
         _bsz, seqlen = tokens.shape

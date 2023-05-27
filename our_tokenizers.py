@@ -1,6 +1,6 @@
 import tiktoken
-from llama.tokenizer import Tokenizer as LlamaTokenizer
-from modelArgs import ModelArgs
+from llama_main.llama.tokenizer import Tokenizer as LlamaTokenizer
+from llama_main.llama.model import ModelArgs
 
 from typing import List, Iterable
 

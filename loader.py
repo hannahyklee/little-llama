@@ -1,5 +1,6 @@
-from tokenizers import init_tokenizer
-from modelArgs import ModelArgs
+from our_tokenizers import init_tokenizer
+# from modelArgs import ModelArgs
+from llama_main.llama.model import ModelArgs
 from data import read_data_folder
 
 import torch
@@ -38,16 +39,20 @@ class DataLoader:
             cutoff = (len(tok_chunk) // self.seq_len) * self.seq_len
             tok_torch = torch.tensor(tok_chunk[:cutoff], dtype=torch.long).reshape(-1, self.seq_len)
 
-            dataset = TensorDataset(tok_torch[:, :-1], tok_torch[:, 1:])
-            dataloader = TorchDataLoader(dataset, batch_size=self.batch_size, shuffle=True)
+            yield TensorDataset(tok_torch[:, :-1], tok_torch[:, 1:])
 
-            for item in dataloader:
-                yield item
+            # yield TorchDataLoader(dataset, batch_size=self.batch_size, shuffle=True)
+            # for item in dataloader:
+            #     yield item
 
 
 if __name__ == "__main__":
 
     dl = DataLoader(ModelArgs(), train=True)
+
+    model_args = ModelArgs()
+    model_args.max_chunk_size = 10000
+    val_dataset = next(DataLoader(model_args, train=False))
 
     for i, (x, y) in enumerate(dl):
 

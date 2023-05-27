@@ -47,7 +47,6 @@ def read_data_folder(data_folder: str, num_per_chunk: int = 20000, randomize_fil
 
     # get files in folder
     file_paths = glob.glob(data_folder + "*")
-    file_paths = file_paths + file_paths
 
     # randomize file order
     if randomize_files:
