@@ -16,8 +16,6 @@ from fairscale.nn.model_parallel.layers import (
     ColumnParallelLinear,
 )
 
-# from ... import modelArgs
-
 # @dataclass
 # class ModelArgs:
 #     dim: int = 512  # size of token embedding
@@ -34,6 +32,10 @@ from fairscale.nn.model_parallel.layers import (
 class ModelArgs:
     # Defines the model args class which contains the model's parameters, tokenizer stuff, and training parameters
     tokenizer: str = "llama"
+    tokenizer_kwargs: dict = {"model_path": "tokenizer_data/tokenizer.model"}
+
+    # tokenizer: str = "tiktoken"
+    # tokenizer_kwargs: dict = {"encoding_name": "cl100k_base"}
 
     dim: int = 512  # size of embeddings going between transformer blocks
     n_layers: int = 8   # number of transformer blocks(attention + feed forward)
@@ -46,6 +48,9 @@ class ModelArgs:
     max_batch_size: int = 32
     max_seq_len: int = 512
     max_chunk_size: int = 512  # number of documents to load at a time in memory
+
+    dir_train: str = "train_data/"
+    dir_val: str = "val_data/"
 
 
 class RMSNorm(torch.nn.Module):
