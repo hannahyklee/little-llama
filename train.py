@@ -40,6 +40,7 @@ def data_collator(features):
     batch = {}
     # batch['input_ids'] = torch.stack([f[0] for f in features])
     batch['tokens'] = torch.stack([f[1] for f in features])
+    batch['start_positions'] = torch.arange(0, len(features))
     return batch
 
 

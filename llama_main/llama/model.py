@@ -230,6 +230,12 @@ class TransformerBlock(nn.Module):
 
     # transformer operation is (x -> rms_norm -> (attention + x) = h -> rms_norm -> ff + h
     def forward(self, x: torch.Tensor, start_pos: int, freqs_cis: torch.Tensor, mask: Optional[torch.Tensor]):
+        print(f'len x: {len(x)}')
+        print(f'len attention x: {len(self.attention_norm(x))}')
+        print(f'len freqs cis: {len(freqs_cis)}')
+        print(f'len mask: {len(mask)}')
+        print(f'len attention forward: {len(self.attention.forward(self.attention_norm(x), start_pos, freqs_cis, mask))}')
+
         h = x + self.attention.forward(self.attention_norm(x), start_pos, freqs_cis, mask)
         out = h + self.feed_forward.forward(self.ffn_norm(h))
         return out
@@ -260,20 +266,21 @@ class Transformer(nn.Module):
         )
 
     # @torch.inference_mode()
-    def forward(self, tokens: torch.Tensor, start_pos: int):
+    def forward(self, tokens: torch.Tensor, start_positions: torch.Tensor):
+        output = []
+        for start_pos in start_positions:
+            _bsz, seqlen = tokens.shape
+            h = self.tok_embeddings(tokens)
+            self.freqs_cis = self.freqs_cis.to(h.device)
+            freqs_cis = self.freqs_cis[start_pos : start_pos + seqlen]
 
-        _bsz, seqlen = tokens.shape
-        h = self.tok_embeddings(tokens)
-        self.freqs_cis = self.freqs_cis.to(h.device)
-        freqs_cis = self.freqs_cis[start_pos : start_pos + seqlen]
+            mask = None
+            if seqlen > 1:
+                mask = torch.full((1, 1, seqlen, seqlen), float("-inf"), device=tokens.device)
+                mask = torch.triu(mask, diagonal=start_pos + 1).type_as(h)
 
-        mask = None
-        if seqlen > 1:
-            mask = torch.full((1, 1, seqlen, seqlen), float("-inf"), device=tokens.device)
-            mask = torch.triu(mask, diagonal=start_pos + 1).type_as(h)
-
-        for layer in self.layers:
-            h = layer(h, start_pos, freqs_cis, mask)
-        h = self.norm(h)
-        output = self.output(h[:, -1, :])  # only compute last logits
-        return output.float()
+            for layer in self.layers:
+                h = layer(h, start_pos, freqs_cis, mask)
+            h = self.norm(h)
+            output.append(self.output(h[:, -1, :]))  # only compute last logits
+        return output
