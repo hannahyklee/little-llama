@@ -8,20 +8,8 @@ A subset of the training dataset (e.g. the single ``00.jsonl.zst`` file) should 
 ## Environment Setup
 Follow instructions in ``llama-main/README.md`` to set up and install the necessary packages to run LLaMA code. Then, in the activated environment, run
 ```
-conda install -c conda-forge zstandard
-```
-to read the Pile dataset,
-```
-conda install -c conda-forge transformers
-```
-to utilize the Hugging Face Transformers API and 
-```
-pip install tiktoken
-```
-to use the tokenizer from OpenAI.
-
-
-```
+conda install -c conda-forge zstandard        # (to read the Pile dataset)
+conda install -c conda-forge transformers     # (to utilize the Hugging Face Transformers API)
+pip install tiktoken                          # (to use tokenizer from OpenAI)
 pip install --upgrade accelerate
 ```
-might also be needed 
