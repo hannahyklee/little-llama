@@ -271,37 +271,37 @@ class Transformer(nn.Module):
             labels = labels[:, 1:].contiguous()
             running_loss = 0.0
 
-            # go through each token in a sequence and train; predict the next word
+            h = self.tok_embeddings(tokens)
+            self.freqs_cis = self.freqs_cis.to(h.device)
+            freqs_cis = self.freqs_cis[:seqlen]
+
+            mask = None
+            if seqlen > 1:
+                mask = torch.full((1, 1, seqlen, seqlen), float("-inf"), device=tokens.device)
+                mask = torch.triu(mask, diagonal=1).type_as(h)
+
+            for layer in self.layers:
+                h = layer(h, freqs_cis, mask)
+            h = self.norm(h)
+
+            # output is batch size x seqlen x vocab size (predictions)
+            output = self.output(h).contiguous() # only compute last logits
+
+            # for each word, calculate loss of predicting the next word
             for start_pos in range(seqlen-1):
-                h = self.tok_embeddings(tokens)
-                self.freqs_cis = self.freqs_cis.to(h.device)
-                freqs_cis = self.freqs_cis[start_pos : start_pos + seqlen]
-
-                mask = None
-                if seqlen > 1:
-                    mask = torch.full((1, 1, seqlen, seqlen), float("-inf"), device=tokens.device)
-                    mask = torch.triu(mask, diagonal=start_pos + 1).type_as(h)
-
-                for layer in self.layers:
-                    h = layer(h, freqs_cis, mask)
-                h = self.norm(h)
-
-                # output is batch size x vocab size (predictions)
-                output = self.output(h[:, -1, :]).contiguous() # only compute last logits
 
                 # calculate loss of predicting the next word:
                 #   input: batch size x vocab size predictions
                 #   target: batch size list of indices of correct class
                 loss_function = nn.CrossEntropyLoss()
-                loss = loss_function(output, labels[:,start_pos]) 
-
+                loss = loss_function(output[:,start_pos,:], labels[:,start_pos]) 
                 running_loss += loss
 
             # return mean cross entropy loss for next token predictions for this batch of sequences
             mean_loss = running_loss / (seqlen - 1)
             return mean_loss, output
 
-        # keeping all inference code from before
+        # keeping all inference code from before for now
         else:
             _bsz, seqlen = tokens.shape
             h = self.tok_embeddings(tokens)
