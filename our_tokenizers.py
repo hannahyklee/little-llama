@@ -2,7 +2,7 @@ import tiktoken
 from llama_main.llama.tokenizer import Tokenizer as LlamaTokenizer
 from llama_main.llama.model import ModelArgs
 
-from typing import List, Iterable
+from typing import List
 
 
 class TokenizerWrapper:

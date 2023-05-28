@@ -1,8 +1,7 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # This software may be used and distributed according to the terms of the GNU General Public License version 3.
 
-from typing import Optional, Tuple
-from dataclasses import dataclass
+from typing import Optional, Tuple, Union
 import math
 
 import torch
@@ -16,19 +15,7 @@ from fairscale.nn.model_parallel.layers import (
     ColumnParallelLinear,
 )
 
-# @dataclass
-# class ModelArgs:
-#     dim: int = 512  # size of token embedding
-#     n_layers: int = 8   # number of transformer blocks(attention + feed fw)
-#     n_heads: int = 8   # number of attention heads. Each head will have dimension head_dim = dim/n_heads
-#     vocab_size: int = -1  # defined later by tokenizer
-#     multiple_of: int = 256  # make SwiGLU hidden layer size multiple of large power of 2
-#                             # don't quite understand exactly what this is, but the hidden dimension of the ff layer will
-#                             # be will be a power of 2 close to 2/3 * (4dim) * (dim/multiple_of)
-#     norm_eps: float = 1e-5  # rmsnorm arg to prevent div by 0
 
-#     max_batch_size: int = 32
-#     max_seq_len: int = 2048
 class ModelArgs:
     # Defines the model args class which contains the model's parameters, tokenizer stuff, and training parameters
     tokenizer: str = "llama"
@@ -38,16 +25,16 @@ class ModelArgs:
     # tokenizer_kwargs: dict = {"encoding_name": "cl100k_base"}
 
     dim: int = 512  # size of embeddings going between transformer blocks
-    n_layers: int = 8   # number of transformer blocks(attention + feed forward)
-    n_heads: int = 8   # number of attention heads. Each head will have dimension head_dim = dim/n_heads
+    n_layers: int = 8  # number of transformer blocks(attention + feed forward)
+    n_heads: int = 8  # number of attention heads. Each head will have dimension head_dim = dim/n_heads
     vocab_size: int = -1  # defined later by tokenizer
-    multiple_of: int = 256   # don't quite understand exactly what this is, but the hidden dimension of the ff layer will
-                             # be will be a power of 2 close to 2/3 * (4dim) * (dim/multiple_of)
+    hidden_dim: int = 1536 # changed this so we just define size of the hidden dim.
+                                 # in the paper it says they put it to 8/3 of dim
     norm_eps: float = 1e-5  # rmsnorm arg to prevent div by 0
 
     max_batch_size: int = 32
-    max_seq_len: int = 512
-    max_chunk_size: int = 512  # number of documents to load at a time in memory
+    max_seq_len: int = 2048
+    max_chunk_size: int = 10000  # number of documents to load at a time in memory
 
     dir_train: str = "train_data/"
     dir_val: str = "val_data/"
@@ -84,9 +71,9 @@ def reshape_for_broadcast(freqs_cis: torch.Tensor, x: torch.Tensor):
 
 
 def apply_rotary_emb(
-    xq: torch.Tensor,
-    xk: torch.Tensor,
-    freqs_cis: torch.Tensor,
+        xq: torch.Tensor,
+        xk: torch.Tensor,
+        freqs_cis: torch.Tensor,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     xq_ = torch.view_as_complex(xq.float().reshape(*xq.shape[:-1], -1, 2))
     xk_ = torch.view_as_complex(xk.float().reshape(*xk.shape[:-1], -1, 2))
@@ -101,7 +88,7 @@ class Attention(nn.Module):
         super().__init__()
 
         self.n_local_heads = args.n_heads // fs_init.get_model_parallel_world_size()
-        self.head_dim = args.dim // args.n_heads    # attention head dim
+        self.head_dim = args.dim // args.n_heads  # attention head dim
 
         self.wq = ColumnParallelLinear(
             args.dim,
@@ -135,7 +122,8 @@ class Attention(nn.Module):
             (args.max_batch_size, args.max_seq_len, self.n_local_heads, self.head_dim)
         ).cuda()
 
-    def forward(self, x: torch.Tensor, freqs_cis: torch.Tensor, mask: Optional[torch.Tensor], start_pos: Optional[int] = None):
+    def forward(self, x: torch.Tensor, freqs_cis: torch.Tensor, mask: Optional[torch.Tensor],
+                start_pos: Optional[int] = None) -> torch.Tensor:
 
         # batch x seq_len x dim
         bsz, seqlen, _ = x.shape
@@ -156,17 +144,17 @@ class Attention(nn.Module):
             self.cache_k = self.cache_k.to(xq)
             self.cache_v = self.cache_v.to(xq)
 
-            self.cache_k[:bsz, start_pos : start_pos + seqlen] = xk
-            self.cache_v[:bsz, start_pos : start_pos + seqlen] = xv
+            self.cache_k[:bsz, start_pos: start_pos + seqlen] = xk
+            self.cache_v[:bsz, start_pos: start_pos + seqlen] = xv
 
-            keys = self.cache_k[:bsz, : start_pos + seqlen]
-            values = self.cache_v[:bsz, : start_pos + seqlen]
+            keys = self.cache_k[:bsz, :start_pos + seqlen]
+            values = self.cache_v[:bsz, :start_pos + seqlen]
         else:
             keys = xk
             values = xv
 
         xq = xq.transpose(1, 2)  # batch x n_heads x seq_len x head_dim
-        keys = keys.transpose(1, 2)   # batch x n_heads x seq_len x head_dim
+        keys = keys.transpose(1, 2)  # batch x n_heads x seq_len x head_dim
         values = values.transpose(1, 2)  # batch x n_heads x seq_len x head_dim
 
         # QK^T/sqrt(head_dim) results in batch x n_heads x seq_len x seq_len
@@ -176,9 +164,7 @@ class Attention(nn.Module):
             scores = scores + mask  # (bs, n_local_heads, slen, cache_len + slen)
         scores = F.softmax(scores.float(), dim=-1).type_as(xq)  # compute scores
         output = torch.matmul(scores, values)  # (bs, n_local_heads, slen, head_dim)
-        output = output.transpose(
-            1, 2
-        ).contiguous().view(bsz, seqlen, -1)  # (bs, slen, head_dim * n_heads)
+        output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)  # (bs, slen, head_dim * n_heads)
 
         # final linear layer
         return self.wo(output)
@@ -187,16 +173,11 @@ class Attention(nn.Module):
 class FeedForward(nn.Module):
 
     def __init__(
-        self,
-        dim: int,   # token embedding
-        hidden_dim: int,   # this is set to 4 * dim?
-        multiple_of: int,   # this is some magic
+            self,
+            dim: int,  # token embedding
+            hidden_dim: int
     ):
         super().__init__()
-
-        # but hidden dim will be a power of 2 close to 2/3 * (4dim) * (dim/multiple_of)
-        hidden_dim = int(2 * hidden_dim / 3)
-        hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) // multiple_of)
 
         self.w1 = ColumnParallelLinear(
             dim, hidden_dim, bias=False, gather_output=False,
@@ -215,21 +196,19 @@ class FeedForward(nn.Module):
 
 class TransformerBlock(nn.Module):
     def __init__(self, layer_id: int, args: ModelArgs):
-
         super().__init__()
         self.n_heads = args.n_heads
         self.dim = args.dim
         self.head_dim = args.dim // args.n_heads
         self.attention = Attention(args)
-        self.feed_forward = FeedForward(
-            dim=args.dim, hidden_dim=4 * args.dim, multiple_of=args.multiple_of
-        )
+        self.feed_forward = FeedForward(dim=args.dim, hidden_dim=args.hidden_dim)
         self.layer_id = layer_id
         self.attention_norm = RMSNorm(args.dim, eps=args.norm_eps)
         self.ffn_norm = RMSNorm(args.dim, eps=args.norm_eps)
 
     # transformer operation is (x -> rms_norm -> (attention + x) = h -> rms_norm -> ff + h
-    def forward(self, x: torch.Tensor, freqs_cis: torch.Tensor, mask: Optional[torch.Tensor], start_pos: Optional[int] = None):
+    def forward(self, x: torch.Tensor, freqs_cis: torch.Tensor, mask: Optional[torch.Tensor],
+                start_pos: Optional[int] = None) -> torch.Tensor:
         h = x + self.attention.forward(self.attention_norm(x), start_pos=start_pos, freqs_cis=freqs_cis, mask=mask)
         out = h + self.feed_forward.forward(self.ffn_norm(h))
         return out
@@ -259,62 +238,39 @@ class Transformer(nn.Module):
             self.params.dim // self.params.n_heads, self.params.max_seq_len * 2
         )
 
+        self.loss = nn.CrossEntropyLoss()
+
     # @torch.inference_mode()
-    def forward(self, tokens: torch.Tensor, labels: Optional[torch.Tensor] = None, start_pos: Optional[int] = None):
+    def forward(self, tokens: torch.Tensor,
+                labels: Optional[torch.Tensor] = None,
+                start_pos: Optional[int] = None) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+
         _bsz, seqlen = tokens.shape
+        h = self.tok_embeddings(tokens)
+        self.freqs_cis = self.freqs_cis.to(h.device)
 
-        # if labels exists, train
-        # TODO: factor code here
-        if labels is not None:
-            output = torch.zeros((seqlen, self.vocab_size))
-            # shift labels
-            labels = labels[:, 1:].contiguous()
-            running_loss = 0.0
-
-            h = self.tok_embeddings(tokens)
-            self.freqs_cis = self.freqs_cis.to(h.device)
+        if start_pos is None:
             freqs_cis = self.freqs_cis[:seqlen]
+            diagonal = 1
+        else:
+            freqs_cis = self.freqs_cis[start_pos: start_pos + seqlen]
+            diagonal = start_pos + 1
 
-            mask = None
-            if seqlen > 1:
-                mask = torch.full((1, 1, seqlen, seqlen), float("-inf"), device=tokens.device)
-                mask = torch.triu(mask, diagonal=1).type_as(h)
+        mask = None
+        if seqlen > 1:
+            mask = torch.full((1, 1, seqlen, seqlen), float("-inf"), device=tokens.device)
+            mask = torch.triu(mask, diagonal=diagonal).type_as(h)
 
-            for layer in self.layers:
-                h = layer(h, freqs_cis, mask)
-            h = self.norm(h)
+        for layer in self.layers:
+            h = layer(h, start_pos=start_pos, freqs_cis=freqs_cis, mask=mask)
+        h = self.norm(h)
 
-            # output is batch size x seqlen x vocab size (predictions)
-            output = self.output(h).contiguous() # only compute last logits
-
-            # for each word, calculate loss of predicting the next word
-            for start_pos in range(seqlen-1):
-
-                # calculate loss of predicting the next word:
-                #   input: batch size x vocab size predictions
-                #   target: batch size list of indices of correct class
-                loss_function = nn.CrossEntropyLoss()
-                loss = loss_function(output[:,start_pos,:], labels[:,start_pos]) 
-                running_loss += loss
-
-            # return mean cross entropy loss for next token predictions for this batch of sequences
-            mean_loss = running_loss / (seqlen - 1)
-            return mean_loss, output
+        # output is batch size x seqlen x vocab size (predictions)
+        # if labels exists, train
+        if labels is not None:
+            output = self.output(h).contiguous()
+            return self.loss(output.flatten(end_dim=-2), labels.flatten()), output
 
         # keeping all inference code from before for now
-        else:
-            _bsz, seqlen = tokens.shape
-            h = self.tok_embeddings(tokens)
-            self.freqs_cis = self.freqs_cis.to(h.device)
-            freqs_cis = self.freqs_cis[start_pos : start_pos + seqlen]
-
-            mask = None
-            if seqlen > 1:
-                mask = torch.full((1, 1, seqlen, seqlen), float("-inf"), device=tokens.device)
-                mask = torch.triu(mask, diagonal=start_pos + 1).type_as(h)
-
-            for layer in self.layers:
-                h = layer(h, start_pos=start_pos, freqs_cis=freqs_cis, mask=mask)
-            h = self.norm(h)
-            output.append(self.output(h[:, -1, :]))  # only compute last logits
-            return output
+        # output.append(self.output(h[:, -1, :]))  # only compute last logits
+        # return output

@@ -4,8 +4,7 @@ import io
 import glob
 import random
 
-from paths import dir_val, dir_train
-from typing import Union, List
+from typing import Union, List, Tuple, Iterator
 
 
 # performs line formatting. Nothing really needs to be done except extract the relevant field from the json dict
@@ -24,7 +23,7 @@ def _read_line(line: str) -> Union[str, None]:
 
 
 # reads num_per_chunk documents from a file to prevent loading all the file in memory
-def _read_file_chunk(text_stream: io.TextIOWrapper, lines: List[str], num_per_chunk: int):
+def _read_file_chunk(text_stream: io.TextIOWrapper, lines: List[str], num_per_chunk: int) -> Tuple[List[str], bool]:
 
     full_chunk = False
 
@@ -43,7 +42,7 @@ def _read_file_chunk(text_stream: io.TextIOWrapper, lines: List[str], num_per_ch
     return lines, full_chunk
 
 
-def read_data_folder(data_folder: str, num_per_chunk: int = 20000, randomize_files: bool = True):
+def read_data_folder(data_folder: str, num_per_chunk: int = 20000, randomize_files: bool = True) -> Iterator[List[str]]:
 
     # get files in folder
     file_paths = glob.glob(data_folder + "*")
@@ -96,9 +95,11 @@ def read_data_folder(data_folder: str, num_per_chunk: int = 20000, randomize_fil
 # some tests
 if __name__ == "__main__":
 
-    # for i, chunk in enumerate(read_data_folder(dir_val)):
-    #     print(i, len(chunk))
-    #     print(chunk[0][0:10])
+    from paths import dir_val, dir_train
+
+    for i, chunk in enumerate(read_data_folder(dir_val)):
+        print(i, len(chunk))
+        print(chunk[0][0:10])
 
     for i, chunk in enumerate(read_data_folder(dir_train)):
         print(i, len(chunk))

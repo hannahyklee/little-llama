@@ -1,12 +1,12 @@
 from our_tokenizers import init_tokenizer
-# from modelArgs import ModelArgs
 from llama_main.llama.model import ModelArgs
 from data import read_data_folder
 
 import torch
 import numpy as np
-from torch.utils.data import DataLoader as TorchDataLoader
 from torch.utils.data import TensorDataset
+
+from typing import Iterator
 
 
 # Class that loads data for training and validation.
@@ -23,7 +23,6 @@ class DataLoader:
     def __init__(self, model_args: ModelArgs, train=True):
 
         self.chunk_size = model_args.max_chunk_size
-        self.batch_size = model_args.max_batch_size
         self.seq_len = model_args.max_seq_len
 
         self.tokenizer = init_tokenizer(model_args)
@@ -34,7 +33,7 @@ class DataLoader:
         # updating vocab size according to the tokenizer initialized
         model_args.vocab_size = self.tokenizer.n_words
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[TensorDataset]:
 
         for chunk in read_data_folder(self.data_path, self.chunk_size):
 
@@ -43,31 +42,30 @@ class DataLoader:
             tok_torch = torch.tensor(tok_chunk[:cutoff], dtype=torch.long).reshape(-1, self.seq_len)
 
             # return tokens and labels (same value; labels shifted later right before calculation)
-            yield TensorDataset(tok_torch, tok_torch)
-
-            # yield TorchDataLoader(dataset, batch_size=self.batch_size, shuffle=True)
-            # for item in dataloader:
-            #     yield item
+            yield TensorDataset(tok_torch[:, :-1], tok_torch[:, 1:])
 
 
 if __name__ == "__main__":
 
+    from torch.utils.data import DataLoader as TorchDataLoader
+
     dl = DataLoader(ModelArgs(), train=True)
 
-    model_args = ModelArgs()
-    model_args.max_chunk_size = 10000
-    val_dataset = next(DataLoader(model_args, train=False))
+    m_args = ModelArgs()
+    m_args.max_chunk_size = 10000
+    val_dataset = DataLoader(m_args, train=False).__iter__()
 
-    for i, (x, y) in enumerate(dl):
+    for i, dl_db in enumerate(dl):
 
-        print(torch.sum(x == dl.tokenizer.bos_id))
-        print(torch.sum(y == dl.tokenizer.eos_id))
+        db_loader = TorchDataLoader(dl_db, batch_size=32, shuffle=True)
 
-        assert torch.all(x[:, 1:] == y[:, :-1])
+        for x, y in db_loader:
 
-        assert x.shape[0] <= dl.batch_size
-        assert x.shape[1] == dl.seq_len - 1
+            print(torch.sum(x == dl.tokenizer.bos_id))
+            print(torch.sum(y == dl.tokenizer.eos_id))
 
-        assert y.shape[0] <= dl.batch_size
-        assert y.shape[1] == dl.seq_len - 1
+            print(x.shape, y.shape)
+            assert torch.all(x[:, 1:] == y[:, :-1])
+            assert x.shape[1] == dl.seq_len - 1
+            assert y.shape[1] == dl.seq_len - 1
 
