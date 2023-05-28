@@ -108,28 +108,24 @@ class Attention(nn.Module):
             args.n_heads * self.head_dim,
             bias=False,
             gather_output=False,
-            init_method=lambda x: x,
         )
         self.wk = ColumnParallelLinear(
             args.dim,
             args.n_heads * self.head_dim,
             bias=False,
             gather_output=False,
-            init_method=lambda x: x,
         )
         self.wv = ColumnParallelLinear(
             args.dim,
             args.n_heads * self.head_dim,
             bias=False,
             gather_output=False,
-            init_method=lambda x: x,
         )
         self.wo = RowParallelLinear(
             args.n_heads * self.head_dim,
             args.dim,
             bias=False,
             input_is_parallel=True,
-            init_method=lambda x: x,
         )
 
         self.cache_k = torch.zeros(
@@ -139,7 +135,7 @@ class Attention(nn.Module):
             (args.max_batch_size, args.max_seq_len, self.n_local_heads, self.head_dim)
         ).cuda()
 
-    def forward(self, x: torch.Tensor, start_pos: int, freqs_cis: torch.Tensor, mask: Optional[torch.Tensor]):
+    def forward(self, x: torch.Tensor, freqs_cis: torch.Tensor, mask: Optional[torch.Tensor], start_pos: Optional[int] = None):
 
         # batch x seq_len x dim
         bsz, seqlen, _ = x.shape
@@ -155,15 +151,19 @@ class Attention(nn.Module):
         # apply rotary(see paper for explanation) positional embeddings
         xq, xk = apply_rotary_emb(xq, xk, freqs_cis=freqs_cis)
 
-        # some parallel comp. stuff I don't quite get
-        self.cache_k = self.cache_k.to(xq)
-        self.cache_v = self.cache_v.to(xq)
+        # only use caching during inference
+        if start_pos is not None:
+            self.cache_k = self.cache_k.to(xq)
+            self.cache_v = self.cache_v.to(xq)
 
-        self.cache_k[:bsz, start_pos : start_pos + seqlen] = xk
-        self.cache_v[:bsz, start_pos : start_pos + seqlen] = xv
+            self.cache_k[:bsz, start_pos : start_pos + seqlen] = xk
+            self.cache_v[:bsz, start_pos : start_pos + seqlen] = xv
 
-        keys = self.cache_k[:bsz, : start_pos + seqlen]
-        values = self.cache_v[:bsz, : start_pos + seqlen]
+            keys = self.cache_k[:bsz, : start_pos + seqlen]
+            values = self.cache_v[:bsz, : start_pos + seqlen]
+        else:
+            keys = xk
+            values = xv
 
         xq = xq.transpose(1, 2)  # batch x n_heads x seq_len x head_dim
         keys = keys.transpose(1, 2)   # batch x n_heads x seq_len x head_dim
@@ -199,13 +199,13 @@ class FeedForward(nn.Module):
         hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) // multiple_of)
 
         self.w1 = ColumnParallelLinear(
-            dim, hidden_dim, bias=False, gather_output=False, init_method=lambda x: x
+            dim, hidden_dim, bias=False, gather_output=False,
         )
         self.w2 = RowParallelLinear(
-            hidden_dim, dim, bias=False, input_is_parallel=True, init_method=lambda x: x
+            hidden_dim, dim, bias=False, input_is_parallel=True,
         )
         self.w3 = ColumnParallelLinear(
-            dim, hidden_dim, bias=False, gather_output=False, init_method=lambda x: x
+            dim, hidden_dim, bias=False, gather_output=False,
         )
 
     # so SwiGLU is the operation inside self.w2. So SwiGLU(x) = Swish_activation(W_1x) * W3x
@@ -229,14 +229,8 @@ class TransformerBlock(nn.Module):
         self.ffn_norm = RMSNorm(args.dim, eps=args.norm_eps)
 
     # transformer operation is (x -> rms_norm -> (attention + x) = h -> rms_norm -> ff + h
-    def forward(self, x: torch.Tensor, start_pos: int, freqs_cis: torch.Tensor, mask: Optional[torch.Tensor]):
-        print(f'len x: {len(x)}')
-        print(f'len attention x: {len(self.attention_norm(x))}')
-        print(f'len freqs cis: {len(freqs_cis)}')
-        print(f'len mask: {len(mask)}')
-        print(f'len attention forward: {len(self.attention.forward(self.attention_norm(x), start_pos, freqs_cis, mask))}')
-
-        h = x + self.attention.forward(self.attention_norm(x), start_pos, freqs_cis, mask)
+    def forward(self, x: torch.Tensor, freqs_cis: torch.Tensor, mask: Optional[torch.Tensor], start_pos: Optional[int] = None):
+        h = x + self.attention.forward(self.attention_norm(x), start_pos=start_pos, freqs_cis=freqs_cis, mask=mask)
         out = h + self.feed_forward.forward(self.ffn_norm(h))
         return out
 
@@ -249,7 +243,7 @@ class Transformer(nn.Module):
         self.n_layers = params.n_layers
 
         self.tok_embeddings = ParallelEmbedding(
-            params.vocab_size, params.dim, init_method=lambda x: x
+            params.vocab_size, params.dim,
         )
 
         self.layers = torch.nn.ModuleList()
@@ -258,7 +252,7 @@ class Transformer(nn.Module):
 
         self.norm = RMSNorm(params.dim, eps=params.norm_eps)
         self.output = ColumnParallelLinear(
-            params.dim, params.vocab_size, bias=False, init_method=lambda x: x
+            params.dim, params.vocab_size, bias=False,
         )
 
         self.freqs_cis = precompute_freqs_cis(
@@ -266,9 +260,49 @@ class Transformer(nn.Module):
         )
 
     # @torch.inference_mode()
-    def forward(self, tokens: torch.Tensor, start_positions: torch.Tensor):
-        output = []
-        for start_pos in start_positions:
+    def forward(self, tokens: torch.Tensor, labels: Optional[torch.Tensor] = None, start_pos: Optional[int] = None):
+        _bsz, seqlen = tokens.shape
+
+        # if labels exists, train
+        # TODO: factor code here
+        if labels is not None:
+            output = torch.zeros((seqlen, self.vocab_size))
+            # shift labels
+            labels = labels[:, 1:].contiguous()
+            losses = []
+
+            # go through each token in a sequence and train; predict the next word
+            for start_pos in range(seqlen-1):
+                h = self.tok_embeddings(tokens)
+                self.freqs_cis = self.freqs_cis.to(h.device)
+                freqs_cis = self.freqs_cis[start_pos : start_pos + seqlen]
+
+                mask = None
+                if seqlen > 1:
+                    mask = torch.full((1, 1, seqlen, seqlen), float("-inf"), device=tokens.device)
+                    mask = torch.triu(mask, diagonal=start_pos + 1).type_as(h)
+
+                for layer in self.layers:
+                    h = layer(h, freqs_cis, mask)
+                h = self.norm(h)
+
+                # output is batch size x vocab size (predictions)
+                output = self.output(h[:, -1, :]).contiguous() # only compute last logits
+
+                # calculate loss of predicting the next word:
+                #   input: batch size x vocab size predictions
+                #   target: batch size list of indices of correct class
+                loss_function = nn.CrossEntropyLoss()
+                loss = loss_function(output, labels[:,start_pos]) 
+
+                # add to list of losses for each prediction in sequence
+                losses.append(loss)
+
+            # return mean cross entropy loss for next token predictions for this batch of sequences
+            return torch.tensor(torch.mean(torch.stack(losses), dim=0), requires_grad=True), output 
+
+        # keep all inference code from before
+        else:
             _bsz, seqlen = tokens.shape
             h = self.tok_embeddings(tokens)
             self.freqs_cis = self.freqs_cis.to(h.device)
@@ -280,7 +314,7 @@ class Transformer(nn.Module):
                 mask = torch.triu(mask, diagonal=start_pos + 1).type_as(h)
 
             for layer in self.layers:
-                h = layer(h, start_pos, freqs_cis, mask)
+                h = layer(h, start_pos=start_pos, freqs_cis=freqs_cis, mask=mask)
             h = self.norm(h)
             output.append(self.output(h[:, -1, :]))  # only compute last logits
-        return output
+            return output

@@ -42,7 +42,8 @@ class DataLoader:
             cutoff = (len(tok_chunk) // self.seq_len) * self.seq_len
             tok_torch = torch.tensor(tok_chunk[:cutoff], dtype=torch.long).reshape(-1, self.seq_len)
 
-            yield TensorDataset(tok_torch[:, :-1], tok_torch[:, 1:])
+            # return tokens and labels (same value; labels shifted later right before calculation)
+            yield TensorDataset(tok_torch, tok_torch)
 
             # yield TorchDataLoader(dataset, batch_size=self.batch_size, shuffle=True)
             # for item in dataloader:
