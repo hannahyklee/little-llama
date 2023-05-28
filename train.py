@@ -43,10 +43,12 @@ def data_collator(features):
 
 if __name__ == "__main__":
     # set up distributed system settings (but running on single gpu)
-    local_rank = 0
-    world_size = 1
+    # local_rank = 0
+    # world_size = 1
+    local_rank = int(os.environ.get("LOCAL_RANK", -1))
+    world_size = int(os.environ.get("WORLD_SIZE", -1))
 
-    torch.distributed.init_process_group("gloo") # "nccl" for gpu, "gloo" if on windows/mac
+    torch.distributed.init_process_group("nccl") # "nccl" for gpu, "gloo" if on windows/mac
     initialize_model_parallel(world_size)
     torch.cuda.set_device(local_rank)
     # seed must be the same in all processes
