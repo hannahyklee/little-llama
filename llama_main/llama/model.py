@@ -269,7 +269,7 @@ class Transformer(nn.Module):
             output = torch.zeros((seqlen, self.vocab_size))
             # shift labels
             labels = labels[:, 1:].contiguous()
-            losses = []
+            running_loss = 0.0
 
             # go through each token in a sequence and train; predict the next word
             for start_pos in range(seqlen-1):
@@ -295,13 +295,13 @@ class Transformer(nn.Module):
                 loss_function = nn.CrossEntropyLoss()
                 loss = loss_function(output, labels[:,start_pos]) 
 
-                # add to list of losses for each prediction in sequence
-                losses.append(loss)
+                running_loss += loss
 
             # return mean cross entropy loss for next token predictions for this batch of sequences
-            return torch.tensor(torch.mean(torch.stack(losses), dim=0), requires_grad=True), output 
+            mean_loss = running_loss / (seqlen - 1)
+            return mean_loss, output
 
-        # keep all inference code from before
+        # keeping all inference code from before
         else:
             _bsz, seqlen = tokens.shape
             h = self.tok_embeddings(tokens)
