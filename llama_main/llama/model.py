@@ -1,7 +1,7 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # This software may be used and distributed according to the terms of the GNU General Public License version 3.
 
-from typing import Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union
 import math
 
 import torch
@@ -239,6 +239,14 @@ class Transformer(nn.Module):
         )
 
         self.loss = nn.CrossEntropyLoss()
+
+
+    def floating_point_ops(self,
+        inputs: Dict[str, Union[torch.Tensor, Any]]
+    ) -> int:
+        flos = 6 * inputs['tokens'].numel() * sum(p.numel() for p in self.parameters() if p.requires_grad)
+        return flos
+
 
     # @torch.inference_mode()
     def forward(self, tokens: torch.Tensor,
