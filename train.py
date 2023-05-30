@@ -23,9 +23,9 @@ def setup_model_args() -> ModelArgs:
     # in the paper it says they put it to 8/3 of dim
     model_args.norm_eps = 1e-5  # rmsnorm arg to prevent div by 0
 
-    model_args.max_batch_size = 128
-    model_args.max_seq_len = 128
-    model_args.max_chunk_size = 20000  # number of documents to load at a time in memory
+    model_args.max_batch_size = 128 # 8 for code testing
+    model_args.max_seq_len = 128 # 8 for code testing
+    model_args.max_chunk_size = 20000  # 512 for code testing # number of documents to load at a time in memory
 
     model_args.dir_train = dir_train
     model_args.dir_val = dir_val
@@ -63,12 +63,16 @@ if __name__ == "__main__":
     training_args = TrainingArguments(
         output_dir=f'test_model_dir',
         per_device_train_batch_size=train_args.max_batch_size,
-        per_device_eval_batch_size=train_args.max_batch_size
+        per_device_eval_batch_size=train_args.max_batch_size,
+        optim='adamw_torch',
+        lr_scheduler_type='cosine',
+        warmup_ratio=0.002, # from original gpt paper
+        evaluation_strategy='steps', # evaluates every `eval_steps`, which defaults to `logging_steps` (default 500)
     )
 
     # get single dataset for validation with first 10000
     val_args = setup_model_args()
-    val_args.max_chunk_size = 512  # 10000
+    val_args.max_chunk_size = 10000
     val_dl = DataLoader(val_args, train=False)
     val_dataset = next(iter(val_dl))
 
@@ -81,7 +85,6 @@ if __name__ == "__main__":
     # for each "chunk" of data, DataLoader creates a new training dataset
     # and train the model from the past checkpoint on this new dataset
     for i, train_dataset in enumerate(train_dl):
-
         trainer = Trainer(
             model=model,
             data_collator=data_collator,
@@ -93,5 +96,5 @@ if __name__ == "__main__":
         trainer.train()
 
         # for testing, only use first chunk of data
-        if i == 0:
-            break
+        # if i == 0:
+        #     break
