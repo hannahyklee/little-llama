@@ -2,3 +2,7 @@ torch
 fairscale
 fire
 sentencepiece
+transformers
+tiktoken
+zstandard
+seaborn

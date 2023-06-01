@@ -65,8 +65,12 @@ if __name__ == "__main__":
         per_device_train_batch_size=train_args.max_batch_size,
         per_device_eval_batch_size=train_args.max_batch_size,
         optim='adamw_torch',
+        adam_beta1=0.9, # from LLaMA paper
+        adam_beta2=0.95, # from LLaMA paper
+        weight_decay=0.1, # from LLaMA paper
+        learning_rate=1.0e-3, 
         lr_scheduler_type='cosine',
-        warmup_ratio=0.002, # from original gpt paper
+        warmup_steps=2000, # from LLaMA paper
         evaluation_strategy='steps', # evaluates every `eval_steps`, which defaults to `logging_steps` (default 500)
     )
 
@@ -96,5 +100,5 @@ if __name__ == "__main__":
         trainer.train()
 
         # for testing, only use first chunk of data
-        # if i == 0:
-        #     break
+        if i == 0:
+            break
