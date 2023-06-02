@@ -7,8 +7,6 @@ import sys
 from matplotlib import pyplot as plt
 
 
-
-
 def plot_loss(filepath: str):
     f = open(filepath)
     data = json.load(f)
@@ -32,7 +30,7 @@ def plot_loss(filepath: str):
     # plot train and validation loss
     sns.lineplot(data=dfm, x='Steps', y="Loss", hue='Dataset', legend='full').set(title="")
     ax = plt.gca()
-    plt.savefig('/visualizations/loss_plot.png')
+    plt.savefig('loss_plot.png')
                 
 
 def main():
