@@ -72,6 +72,7 @@ def train(training_args_dict):
         output_dir=training_args_dict['output_dir'],
         lr_scheduler_type=training_args_dict['lr_scheduler_type'],
         warmup_steps=training_args_dict['warmup_steps'],
+        num_train_epochs=training_args_dict['epochs'],
 
         # evaluates every `eval_steps`, which defaults to `logging_steps` (default 500)
         evaluation_strategy='steps',    

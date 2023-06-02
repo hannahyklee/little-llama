@@ -1,7 +1,7 @@
 from train import train
 import sys
 
-# set training arguments
+# set training arguments for 3 epochs
 training_args_baseline = {
     'output_dir': f'experiment_data/test_model_dir',
     'lr_scheduler_type': 'cosine',
@@ -24,12 +24,16 @@ def main():
     training_args = None
     # get the correct experiment 
     experiment = sys.argv[1] 
+    epochs = sys.argv[2]
     if experiment == 'baseline':
         training_args = training_args_baseline
     elif experiment == 'cosine_nowarmup':
         training_args = training_args_cosine_no_warmup
     elif experiment == 'linear_warmup':
         training_args = training_args_linear_warmup
+
+    # set number of training epochs
+    training_args['epochs'] = epochs
 
     # run training
     train(training_args)
