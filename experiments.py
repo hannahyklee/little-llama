@@ -1,39 +1,22 @@
 from train import train
 import sys
 
-# set training arguments for 3 epochs
-training_args_baseline = {
-    'output_dir': f'experiment_data/test_model_dir',
-    'lr_scheduler_type': 'cosine',
-    'warmup_steps': 2000,
-}
-
-training_args_cosine_no_warmup = {
-    'output_dir': f'experiment_data/cosine_no_warmup',
-    'lr_scheduler_type': 'cosine',
-    'warmup_steps': 0,
-}
-
-training_args_linear_warmup = {
-    'output_dir': f'experiment_data/linear_warmup',
-    'lr_scheduler_type': 'linear',
-    'warmup_steps': 2000,
-}
-
 def main():
-    training_args = None
+    training_args = {}
     # get the correct experiment 
-    experiment = sys.argv[1] 
-    epochs = sys.argv[2]
-    if experiment == 'baseline':
-        training_args = training_args_baseline
-    elif experiment == 'cosine_nowarmup':
-        training_args = training_args_cosine_no_warmup
-    elif experiment == 'linear_warmup':
-        training_args = training_args_linear_warmup
+    scheduler = sys.argv[1] 
+    warmup_steps = sys.argv[2]
+    epochs = sys.argv[3]
 
-    # set number of training epochs
-    training_args['epochs'] = epochs
+    scheduler_options = ['cosine', 'linear']
+
+    if scheduler not in scheduler_options:
+        print(f'Unexpected scheduler found; expected one of {scheduler_options}')
+    
+    training_args['lr_scheduler_type'] = scheduler
+    training_args['warmup_steps'] = int(warmup_steps)
+    training_args['epochs'] = int(epochs)
+    training_args['output_dir'] = f'experiment_data/{scheduler}_{warmup_steps}_{epochs}'
 
     # run training
     train(training_args)

@@ -16,3 +16,16 @@ pip install transformers                      # to utilize the Hugging Face Tran
 pip install tiktoken                          # to use tokenizer from OpenAI
 pip install --upgrade accelerate              
 ```
+
+## Running Experiments
+
+From the ``little-llama`` home directory, we can train the LLaMA model using the following command:
+```
+torchrun experiments.py <lr scheduler> <warmup steps> <epochs>
+```
+
+We run:
+```
+torchrun experiments.py cosine 2000 3
+torchrun experiments.py linear 2000 3
+```
