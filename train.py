@@ -60,6 +60,7 @@ def train(training_args_dict):
         # get correct batch size from model args
         per_device_train_batch_size=train_args.max_batch_size,
         per_device_eval_batch_size=train_args.max_batch_size,
+        dataloader_num_workers=8,
         
         # 'standard' LLaMA parameters
         optim='adamw_torch',
