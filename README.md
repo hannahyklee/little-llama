@@ -11,9 +11,6 @@ We build off of the setup for LLaMA to make the codebase support training. Run t
 cd llama_main/                                # move to LLaMA directory
 pip install -r requirements.txt               # install requirements defined by LLaMA (instruction copied from llama_main/README.md)
 pip install -e .                              # (instruction copied from llama_main/README.md)
-pip zstandard                                 # to read the Pile dataset
-pip install transformers                      # to utilize the Hugging Face Transformers API
-pip install tiktoken                          # to use tokenizer from OpenAI
 pip install --upgrade accelerate              
 ```
 
