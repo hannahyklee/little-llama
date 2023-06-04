@@ -136,3 +136,5 @@ if __name__ == "__main__":
     training_args['warmup_steps'] = int(warmup_steps)
     training_args['epochs'] = int(epochs)
     training_args['output_dir'] = f'experiment_data/{scheduler}_{warmup_steps}_{epochs}'
+
+    train(training_args)

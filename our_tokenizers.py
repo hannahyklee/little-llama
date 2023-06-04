@@ -80,7 +80,7 @@ class LlamaWrapper(TokenizerWrapper):
         self.eos_id: int = self._tokenizer.eos_id
         self.pad_id: int = self._tokenizer.pad_id
 
-    def encode(self, s: str, eos: bool=False, bos:bool=True, train:bool=False) -> List[int]:
+    def encode(self, s: str, train: bool) -> List[int]:
         """
         Parameters:
         s: string to be encoded
@@ -92,20 +92,21 @@ class LlamaWrapper(TokenizerWrapper):
         train: indicates whether the batch is for training or validation(True) or for generation(False)
             if train = True, add bos and eos to tokenized documents, otherwise add just bos is added
         """
-        if train: # when train was set to true (using the methods designed by Vlad)
-            eos = train # set eos to be true as well
-        return self._tokenizer.encode(s, bos=bos, eos=eos)
+        return self._tokenizer.encode(s, bos=True, eos=train)
 
 
 # use this function to create tokenizers
 def init_tokenizer(params: ModelArgs) -> TokenizerWrapper:
 
     if params.tokenizer == "tiktoken":
-        return TikTokenWrapper(**params.tokenizer_kwargs)
+        tokenizer = TikTokenWrapper(**params.tokenizer_kwargs)
     elif params.tokenizer == "llama":
-        return LlamaWrapper(**params.tokenizer_kwargs)
+        tokenizer = LlamaWrapper(**params.tokenizer_kwargs)
     else:
         raise ValueError("Tokenizer can be tiktoken or llama.")
+
+    params.vocab_size = tokenizer.n_words
+    return tokenizer
 
 
 # some test code

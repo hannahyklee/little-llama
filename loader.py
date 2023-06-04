@@ -30,9 +30,6 @@ class DataLoader:
 
         self.train = train
 
-        # updating vocab size according to the tokenizer initialized
-        model_args.vocab_size = self.tokenizer.n_words
-
     def __iter__(self) -> Iterator[TensorDataset]:
 
         for chunk in read_data_folder(self.data_path, self.chunk_size):

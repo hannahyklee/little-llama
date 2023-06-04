@@ -3,18 +3,18 @@ import os
 import sys
 
 from fairscale.nn.model_parallel.initialize import initialize_model_parallel
-from llama_main.llama.model import ModelArgs, Transformer
+from llama_main.llama.model import Transformer
 from train import setup_model_args
 from our_tokenizers import init_tokenizer
 from llama_main.llama.generation import LLaMA
-from loader import DataLoader # importing just so that we can set up Transformer
 
 
 """
-This script perfoms inference on a saved LLaMA model
+This script performs inference on a saved LLaMA model
 Arguments:
 [1] path of the directory where saved model pytorch_model.bin can be found
 """
+
 
 def make_prompts():
     """
@@ -51,9 +51,10 @@ def make_prompts():
 
 
 if __name__ == "__main__":
+
     # Parameter: [1] path of the directory where saved model pytorch_model.bin can be found
-    dir = sys.argv[1]
-    model_path = os.path.join(dir, 'pytorch_model.bin')
+    model_dir = sys.argv[1]
+    model_path = os.path.join(model_dir, 'pytorch_model.bin')
 
     # set up system to be able to run the model
     assert torch.cuda.is_available()
@@ -69,13 +70,13 @@ if __name__ == "__main__":
 
     # set up the model
     train_args = setup_model_args()
-    train_dl = DataLoader(train_args, train=True) # set up training dataloader for convenience so train_args gets set up correctly 
+    tokenizer = init_tokenizer(train_args)
+
     model = Transformer(train_args) 
     state_dict = torch.load(model_path, map_location="cpu")
     model.load_state_dict(state_dict, strict=True)
     model.to(DEVICE)
 
-    tokenizer = init_tokenizer(train_args)
     llama = LLaMA(model=model, tokenizer=tokenizer) 
 
     # generate 
@@ -85,5 +86,4 @@ if __name__ == "__main__":
     for i in range(len(prompts)):
         print("Prompt:", prompts[i])
         print("Response:", outputs[i])
-
    
