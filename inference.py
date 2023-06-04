@@ -1,12 +1,12 @@
 import torch
 import os
 
-from transformers import AutoTokenizer, AutoModelForSequenceClassification, Trainer
 from fairscale.nn.model_parallel.initialize import initialize_model_parallel
 from llama_main.llama.model import ModelArgs, Transformer
 from train import setup_model_args
 from our_tokenizers import init_tokenizer
 from llama_main.llama.generation import LLaMA
+from loader import DataLoader # importing just so that we can set up Transformer
 
 
 # what is our test set? I think just some random phrases we come up with and tokenize
@@ -51,23 +51,29 @@ if __name__ == "__main__":
     # set up system to be able to run the model
     local_rank = int(os.environ.get("LOCAL_RANK", -1))
     world_size = int(os.environ.get("WORLD_SIZE", -1))
+    print('set world size etc')
 
     torch.distributed.init_process_group("nccl")  # "nccl" for gpu, "gloo" if on windows/mac
     initialize_model_parallel(world_size)
     torch.cuda.set_device(local_rank)
+    print('initialized cuda')
 
     # set up the model
-    model_args = setup_model_args()
-    model = Transformer(model_args) # we will see if it works to setup the model like this - it might not have all the info it needs
+    # set up training dataloader
+    train_args = setup_model_args()
+    train_dl = DataLoader(train_args, train=True) # using this just so train_args gets setup correctly TODO change later
+    model = Transformer(train_args) # we will see if it works to setup the model like this - it might not have all the info it needs
 
     checkpoint = torch.load("test_model_dir/checkpoint-12000/pytorch_model.bin")
     model.load_state_dict(checkpoint["model_state_dict"])
 
-    tokenizer = init_tokenizer(model_args)
+    tokenizer = init_tokenizer(train_args)
     llama = LLaMA(model=model, tokenizer=tokenizer)   
 
     # I think I can just call generate from LLaMA at this point
     # TODO finish 
+
+    # below are some ideas that I had when I was trying to figure out how to generate stuff
 
     # # tokenize text
     # prompts = ["What is the meaning of life?"]
