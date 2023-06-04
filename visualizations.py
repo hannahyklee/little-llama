@@ -63,6 +63,11 @@ def plot_val_loss(filepaths: list):
 
 
 def read_json(filepath: str):
+    """
+    Reads contents from a given file and populates a dictionary with result statistics, including:
+    training losses, validation losses, steps at which the losses were calculated, learning rates,
+    and the experiment settings currently being used.
+    """
     f = open(filepath)
     data = json.load(f)
 
