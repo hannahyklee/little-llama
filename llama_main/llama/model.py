@@ -250,8 +250,8 @@ class Transformer(nn.Module):
 
     # @torch.inference_mode()
     def forward(self, tokens: torch.Tensor,
-                labels: Optional[torch.Tensor] = None,
-                start_pos: Optional[int] = None) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+                start_pos: Optional[int] = None, 
+                labels: Optional[torch.Tensor] = None) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
 
         _bsz, seqlen = tokens.shape
         h = self.tok_embeddings(tokens)
@@ -274,11 +274,12 @@ class Transformer(nn.Module):
         h = self.norm(h)
 
         # output is batch size x seqlen x vocab size (predictions)
-        # if labels exists, train
+        # if labels exists, train 
         if labels is not None:
             output = self.output(h).contiguous()
             return self.loss(output.flatten(end_dim=-2), labels.flatten()), output
 
-        # keeping all inference code from before for now
-        # output.append(self.output(h[:, -1, :]))  # only compute last logits
-        # return output
+        # Inference output
+        h = self.norm(h)
+        output = self.output(h[:, -1, :])  # only compute last logits for inference
+        return output.float()

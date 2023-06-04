@@ -78,9 +78,23 @@ class LlamaWrapper(TokenizerWrapper):
         self.n_words: int = self._tokenizer.n_words
         self.bos_id: int = self._tokenizer.bos_id
         self.eos_id: int = self._tokenizer.eos_id
+        self.pad_id: int = self._tokenizer.pad_id
 
-    def encode(self, s: str, train: bool) -> List[int]:
-        return self._tokenizer.encode(s, bos=True, eos=train)
+    def encode(self, s: str, eos: bool=False, bos:bool=True, train:bool=False) -> List[int]:
+        """
+        Parameters:
+        s: string to be encoded
+        eos: indicates whether an end of string marker should be added. Will be automatically
+            set to True if train is set to true (this adjustment was made for backwards compatability
+            because previously 'train' alone indicated whether eos would be set, but LLaMA generation code does 
+            uses 'eos' instead of 'train', so it had to be modified)
+        bos: indicates whether a beginning of string marker should be set
+        train: indicates whether the batch is for training or validation(True) or for generation(False)
+            if train = True, add bos and eos to tokenized documents, otherwise add just bos is added
+        """
+        if train: # when train was set to true (using the methods designed by Vlad)
+            eos = train # set eos to be true as well
+        return self._tokenizer.encode(s, bos=bos, eos=eos)
 
 
 # use this function to create tokenizers

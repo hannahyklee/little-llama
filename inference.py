@@ -1,5 +1,6 @@
 import torch
 import os
+import sys
 
 from fairscale.nn.model_parallel.initialize import initialize_model_parallel
 from llama_main.llama.model import ModelArgs, Transformer
@@ -9,9 +10,11 @@ from llama_main.llama.generation import LLaMA
 from loader import DataLoader # importing just so that we can set up Transformer
 
 
-# what is our test set? I think just some random phrases we come up with and tokenize
-
-# use the llama tokenizer
+"""
+This script perfoms inference on a saved LLaMA model
+Arguments:
+[1] path of the directory where saved model pytorch_model.bin can be found
+"""
 
 def make_prompts():
     """
@@ -48,7 +51,13 @@ def make_prompts():
 
 
 if __name__ == "__main__":
+    # Parameter: [1] path of the directory where saved model pytorch_model.bin can be found
+    dir = sys.argv[1]
+    model_path = os.path.join(dir, 'pytorch_model.bin')
+
     # set up system to be able to run the model
+    assert torch.cuda.is_available()
+    DEVICE = "cuda"
     local_rank = int(os.environ.get("LOCAL_RANK", -1))
     world_size = int(os.environ.get("WORLD_SIZE", -1))
     print('set world size etc')
@@ -59,39 +68,22 @@ if __name__ == "__main__":
     print('initialized cuda')
 
     # set up the model
-    # set up training dataloader
     train_args = setup_model_args()
-    train_dl = DataLoader(train_args, train=True) # using this just so train_args gets setup correctly TODO change later
-    model = Transformer(train_args) # we will see if it works to setup the model like this - it might not have all the info it needs
-
-    checkpoint = torch.load("test_model_dir/checkpoint-12000/pytorch_model.bin")
-    model.load_state_dict(checkpoint["model_state_dict"])
+    train_dl = DataLoader(train_args, train=True) # set up training dataloader for convenience so train_args gets set up correctly 
+    model = Transformer(train_args) 
+    state_dict = torch.load(model_path, map_location="cpu")
+    model.load_state_dict(state_dict, strict=True)
+    model.to(DEVICE)
 
     tokenizer = init_tokenizer(train_args)
-    llama = LLaMA(model=model, tokenizer=tokenizer)   
+    llama = LLaMA(model=model, tokenizer=tokenizer) 
 
-    # I think I can just call generate from LLaMA at this point
-    # TODO finish 
+    # generate 
+    prompts = make_prompts()
+    outputs = llama.generate(prompts=prompts, max_gen_len=128)  
 
-    # below are some ideas that I had when I was trying to figure out how to generate stuff
+    for i in range(len(prompts)):
+        print("Prompt:", prompts[i])
+        print("Response:", outputs[i])
 
-    # # tokenize text
-    # prompts = ["What is the meaning of life?"]
-    # llama_tok = init_tokenizer(model_args)
-    # tokens = llama_tok.encode_batch(prompts, train=False)
-    # # note we may have to convert tokens to pytorch tensors
-
-
-    # model = AutoModelForSequenceClassification.from_pretrained("output_dir")
-
-    # attempting to load the pytorch model bin file. But that makes the output difficult to handle 
-    # in the last checkpoint for each a run, there appears to be a pytorch_model.bin file
-    # we load the model state from this file
-    # checkpoint = torch.load("test_model_dir/checkpoint-12000/pytorch_model.bin")
-    # model.load_state_dict(checkpoint["model_state_dict"])
-
-    # make inference
-    # model.eval()
-    # output = model(**tokens) # this out output a distribution
-
-
+   
