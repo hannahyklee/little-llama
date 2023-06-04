@@ -11,17 +11,24 @@ def plot_losses(filepaths: list):
     colors by model.
     """
     # create dataframe
-    df = pd.DataFrame(columns=['Loss', 'Dataset', 'Steps', 'Model'])
+    df = pd.DataFrame(columns=['Loss', 'Dataset', 'Steps', 'Model', 'Schedule'])
     for filepath in filepaths:
         results = read_json(filepath)
         newdf = pd.DataFrame(columns=df.columns)
         for i, loss in enumerate(results['train_losses']):
-            newdf = pd.concat([newdf, pd.DataFrame([{'Loss': loss, 'Dataset': 'Train', 'Steps': results['steps'][i]}])], ignore_index=True)
-            newdf = pd.concat([newdf, pd.DataFrame([{'Loss': results['val_losses'][i], 'Dataset': 'Val', 'Steps': results['steps'][i]}])], ignore_index=True)
+            newdf = pd.concat([newdf, pd.DataFrame([{'Loss': loss, 
+                                                     'Dataset': 'Train', 
+                                                     'Steps': results['steps'][i], 
+                                                     'Schedule': results['scheduler']}])], ignore_index=True)
+            newdf = pd.concat([newdf, pd.DataFrame([{'Loss': results['val_losses'][i], 
+                                                     'Dataset': 'Val', 
+                                                     'Steps': results['steps'][i], 
+                                                     'Schedule': results['scheduler']}])], ignore_index=True)
         newdf['Model'] = results['model_name']
         df = pd.concat([df, newdf])
             
-    sns.lineplot(data=df, x='Steps', y='Loss', hue='Model', style='Dataset', linewidth=0.75)
+    sns.lineplot(data=df, x='Steps', y='Loss', hue='Schedule', style='Dataset')
+    plt.title("Loss vs. Steps")
     plt.show()
 
 
@@ -30,16 +37,17 @@ def plot_learning_rates(filepaths: list):
     Plots learning rates vs. steps for different models.
     """
     # create dataframe
-    df = pd.DataFrame(columns=['Learning Rate', 'Steps', 'Model'])
+    df = pd.DataFrame(columns=['Learning Rate', 'Steps', 'Model', 'Schedule'])
     for filepath in filepaths:
         results = read_json(filepath)
         newdf = pd.DataFrame(columns=df.columns)
         for i, lr in enumerate(results['learning_rate']):
-            newdf = pd.concat([newdf, pd.DataFrame([{'Learning Rate': lr, 'Steps': results['steps'][i]}])], ignore_index=True)
+            newdf = pd.concat([newdf, pd.DataFrame([{'Learning Rate': lr, 'Steps': results['steps'][i], 'Schedule': results['scheduler']}])], ignore_index=True)
         newdf['Model'] = results['model_name']
         df = pd.concat([df, newdf])
             
-    sns.lineplot(data=df, x='Steps', y='Learning Rate', hue='Model')
+    sns.lineplot(data=df, x='Steps', y='Learning Rate', hue='Schedule', style='Model')
+    plt.title("Learning Rate vs. Steps")
     plt.show()
 
 
@@ -47,18 +55,20 @@ def plot_val_loss(filepaths: list):
     """
     Plots validation loss vs. compute (in floating point operations)
     """
-    df = pd.DataFrame(columns=["Val Loss", "Model", "Scheduler", "Warmup Steps", "Compute"])
+    df = pd.DataFrame(columns=["Val Loss", "Model", "Schedule", "Warmup Steps", "Compute"])
     for filepath in filepaths:
         results = read_json(filepath)
         min_val_loss = np.min(results["val_losses"])
         row = {"Val Loss": min_val_loss, 
                 "Model": results["model_name"], 
-                "Scheduler": results["scheduler"], 
+                "Schedule": results["scheduler"], 
                 "Warmup Steps": results["warmup_steps"],
                 "Compute": results["compute"]}
         df = pd.concat([df, pd.DataFrame(data=[row])], ignore_index=True)
 
-    sns.lineplot(data=df, x="Compute", y="Val Loss", hue='Warmup Steps', style="Scheduler")
+    sns.lineplot(data=df, x="Compute", y="Val Loss", style="Schedule")
+    plt.xlabel("Compute (Floating Point Operations)")
+    plt.title("Scaling: Validation Loss vs. Compute")
     plt.show()
 
 
@@ -78,8 +88,12 @@ def read_json(filepath: str):
     # get scheduler type and warmup steps from experiment name
     vals = experiment.split('_')
     scheduler = vals[0]
+    scheduler = scheduler.capitalize()
     warmup_steps = vals[1]
     ops = data["total_flos"]
+
+    # rename experiment
+    experiment = scheduler + ', ' + vals[2] + ' Epochs'
 
     results = {'train_losses':[], 
             'val_losses':[],
@@ -110,12 +124,14 @@ def main():
               './experiment_data/cosine_2000_1/trainer_state.json',
               './experiment_data/cosine_2000_3/trainer_state.json',
               './experiment_data/cosine_2000_6/trainer_state.json',
+              './experiment_data/cosine_2000_10/trainer_state.json',
               './experiment_data/linear_2000_1/trainer_state.json',
               './experiment_data/linear_2000_3/trainer_state.json',
-              './experiment_data/linear_2000_6/trainer_state.json']
+              './experiment_data/linear_2000_6/trainer_state.json',
+              './experiment_data/linear_2000_10/trainer_state.json']
     
-    # plot_losses(fpaths)
-    # plot_learning_rates(fpaths)
+    plot_losses(fpaths)
+    plot_learning_rates(fpaths)
     plot_val_loss(fpaths)
 
 if __name__ == "__main__":
