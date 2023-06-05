@@ -57,7 +57,7 @@ trainer.train(resume_from_checkpoint='path/to/checkpoint/directory')
 ```
 For example, if training was run using `torchrun experiments.py cosine 2000 3` and we wanted to resume training from the 6000th step, we would use, from the `little_llama` home directory:
 ```
-trainer.train(resume_from_checkpoint='./experiment_data/cosine_2000_3/checkpoint-6000'
+trainer.train(resume_from_checkpoint='./experiment_data/cosine_2000_3/checkpoint-6000')
 ```
 
 
@@ -82,7 +82,7 @@ torchrun inference.py inference_weights/ "default"
 
 To run inference with **custom** prompts, add prompts as additional arguments to the script:
 ```
-torchrun inference.py inference_weights/ "The meaning of life is" "What should my second prompt be?" "A computer is"
+torchrun inference.py inference_weights/ "The meaning of life is" "What is machine learning?" "A computer is"
 ```
 Note that the maximum sequence length of our trained model is 128 characters.
 
