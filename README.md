@@ -1,9 +1,10 @@
 # little-llama
-
+A barebones repository to train a (much smaller version of) LLaMA. To simply run generation, [set up the environment](https://github.com/hannahyklee/little-llama/#environment-setup) and then skip to [Inference](https://github.com/hannahyklee/little-llama/#inference).
+<br/><br/>
 ## Loading Data
 The Pile dataset can be found here: https://the-eye.eu/public/AI/pile/.
 
-A subset of the training dataset (e.g. the single ``00.jsonl.zst`` file) should be downloaded and placed in the ``train_data/`` directory. Likewise, the validation dataset should be downloaded and placed in the ``val_data/`` directory. 
+A subset of the training dataset (e.g. the single ``00.jsonl.zst`` file) should be downloaded and placed in the ``train_data/`` directory. Likewise, the validation dataset should be downloaded and placed in the ``val_data/`` directory.
 
 ## Environment Setup
 We build off of the setup for LLaMA to make the codebase support training. Run the following to ensure that all necessary packages are included.
@@ -17,7 +18,6 @@ We have modified the `requirements.txt` file to include the following packages, 
 - `transformers`: to use the HuggingFace Trainer class to assist with model training
 - `tiktoken`: to help with tokenizing data
 - `seaborn`: to plot our results
-
 
 ## Training LLaMA and Running Experiments
 
@@ -39,6 +39,7 @@ torchrun experiments.py linear 2000 10
 ```
 When running experiments, checkpoints and logs will be saved to an output directory of the form `experiment_data/{lr scheduler}_{warmup steps}_{epochs}`, with each checkpoint in a directory with the name `checkpoint-{num steps}`. Notably, this directory will contain the `pytorch_model.bin` file, which contains the saved model weights.
 
+
 ### Simple training function
 
 To test model training, it is also possible to directly use the `train.py` file as a script:
@@ -55,14 +56,16 @@ To resume training from a checkpoint, replace the `trainer.train()` call in the 
 ```
 trainer.train(resume_from_checkpoint='path/to/checkpoint/directory')
 ```
-For example, if training was run using `torchrun experiments.py cosine 2000 3` and we wanted to resume training from the 6000th step, we would use, from the `little_llama` home directory:
+For example, if training was run using `torchrun experiments.py cosine 2000 6` and we wanted to resume training from the 6000th step, we would use, from the `little_llama` home directory:
 ```
-trainer.train(resume_from_checkpoint='./experiment_data/cosine_2000_3/checkpoint-6000')
+trainer.train(resume_from_checkpoint='./experiment_data/cosine_2000_6/checkpoint-6000')
 ```
+> Note: due to the size of the model checkpoints, we do not host them in this repository. Instead, the checkpoint directories we saved during training can be found at this link: [checkpoint shared directory](https://drive.google.com/drive/folders/1Dt9gPWXhsGRfL0b_KShr5terCZezaPPx?usp=sharing)  
 
 
 ### Evaluating training
-Logging during training is set by default to log every 500 steps. In each model checkpoint directory there is a `trainer_state.json` file, which includes a `log_history` with the training and validation loss at each logging step. Training and validation losses are also output to the console during training so that users can quickly monitor how training is going.
+Logging during training is set by default to log every 500 steps. In each model checkpoint directory there is a `trainer_state.json` file, which includes a `log_history` with the training and validation loss at each logging step. Training and validation losses are also output to the console during training so that users can quickly monitor how training is going.  
+
 
 ## Inference
 
@@ -71,7 +74,8 @@ To run generation, use our `inference.py` script from the `little_llama` home di
 torchrun inference.py <path/to/saved/model>
 ```
 
-For our best model checkpoint, use the model with a cosine learning rate decay, 2000 warmup steps, and 10 epochs. These weights has been saved under `inference_weights/`.
+> For our best model checkpoint, use the model with a cosine learning rate decay, 2000 warmup steps, and 10 epochs. For ease of use when trying generation, these weights has been saved under `inference_weights/` and can be used as described in the following section.
+
 
 ### Custom Prompts
 
