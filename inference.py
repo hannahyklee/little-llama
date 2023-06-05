@@ -43,8 +43,6 @@ def make_prompts():
         
         peppermint => menthe poivrée
         
-        plush girafe => girafe peluche
-        
         cheese =>""",
     ]
     return prompts
@@ -56,17 +54,30 @@ if __name__ == "__main__":
     model_dir = sys.argv[1]
     model_path = os.path.join(model_dir, 'pytorch_model.bin')
 
+    # by default, run unconditional generation
+    prompts = [""]
+
+    # Check for prompts:
+    if len(sys.argv) > 2:
+        # Parameter: [2] prompting setup. Either indicates to use the default prompts or provides a custom prompt.
+        if sys.argv[2] == "default":
+            print('Using default prompts')
+            prompts = make_prompts()
+        else:
+            print('Using custom prompts')
+            prompts = [sys.argv[i] for i in range(2, len(sys.argv))]
+
+
     # set up system to be able to run the model
     assert torch.cuda.is_available()
     DEVICE = "cuda"
     local_rank = int(os.environ.get("LOCAL_RANK", -1))
     world_size = int(os.environ.get("WORLD_SIZE", -1))
-    print('set world size etc')
 
     torch.distributed.init_process_group("nccl")  # "nccl" for gpu, "gloo" if on windows/mac
     initialize_model_parallel(world_size)
     torch.cuda.set_device(local_rank)
-    print('initialized cuda')
+    print('Cuda initialized')
 
     # set up the model
     train_args = setup_model_args()
@@ -80,7 +91,7 @@ if __name__ == "__main__":
     llama = LLaMA(model=model, tokenizer=tokenizer) 
 
     # generate 
-    prompts = make_prompts()
+    print('Generating...')
     outputs = llama.generate(prompts=prompts, max_gen_len=128)  
 
     for i in range(len(prompts)):

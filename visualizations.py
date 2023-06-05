@@ -56,6 +56,7 @@ def plot_val_loss(filepaths: list):
     Plots validation loss vs. compute (in floating point operations)
     """
     df = pd.DataFrame(columns=["Val Loss", "Model", "Schedule", "Warmup Steps", "Compute"])
+    min_losses = {}
     for filepath in filepaths:
         results = read_json(filepath)
         min_val_loss = np.min(results["val_losses"])
@@ -65,12 +66,26 @@ def plot_val_loss(filepaths: list):
                 "Warmup Steps": results["warmup_steps"],
                 "Compute": results["compute"]}
         df = pd.concat([df, pd.DataFrame(data=[row])], ignore_index=True)
+        # keep track of min losses for each compute level
+        if results["compute"] not in min_losses.keys():
+            min_losses[results["compute"]] = [min_val_loss]
+        else:
+            min_losses[results["compute"]].append(min_val_loss)
 
     sns.lineplot(data=df, x="Compute", y="Val Loss", style="Schedule")
     plt.xlabel("Compute (Floating Point Operations)")
     plt.title("Scaling: Validation Loss vs. Compute")
     plt.show()
 
+    # plot differences 
+    diff_df = pd.DataFrame(columns=['Compute', "Difference"])
+    for compute in min_losses.keys():
+        row = {"Compute": compute, "Difference": np.abs(min_losses[compute][0] - min_losses[compute][1])}
+        diff_df = pd.concat([diff_df, pd.DataFrame(data=[row])], ignore_index=True)
+
+    sns.lineplot(data=diff_df, x="Compute", y="Difference", markers='o')
+    plt.title("Difference in Validation Loss")
+    plt.show()
 
 def read_json(filepath: str):
     """
