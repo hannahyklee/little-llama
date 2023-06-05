@@ -11,6 +11,7 @@ def plot_losses(filepaths: list):
     colors by model.
     """
     # create dataframe
+    sns.set_theme()
     df = pd.DataFrame(columns=['Loss', 'Dataset', 'Steps', 'Model', 'Schedule'])
     for filepath in filepaths:
         results = read_json(filepath)
@@ -83,7 +84,8 @@ def plot_val_loss(filepaths: list):
         row = {"Compute": compute, "Difference": np.abs(min_losses[compute][0] - min_losses[compute][1])}
         diff_df = pd.concat([diff_df, pd.DataFrame(data=[row])], ignore_index=True)
 
-    sns.lineplot(data=diff_df, x="Compute", y="Difference", markers='o')
+    sns.lineplot(data=diff_df, x="Compute", y="Difference")
+    plt.xlabel("Compute (Floating Point Operations)")
     plt.title("Difference in Validation Loss")
     plt.show()
 
