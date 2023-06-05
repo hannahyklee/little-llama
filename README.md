@@ -71,18 +71,18 @@ To run generation, use our `inference.py` script from the `little_llama` home di
 torchrun inference.py <path/to/saved/model>
 ```
 
-For our best model checkpoint, use the model with a cosine learning rate decay, 2000 warmup steps, and 10 epochs.
+For our best model checkpoint, use the model with a cosine learning rate decay, 2000 warmup steps, and 10 epochs. These weights has been saved under `inference_weights/`.
 
 ### Custom Prompts
 
 When running inference with the above script, unconditional prompting is done by default. To run inference with a few preset prompts that are defined in the `make_prompts()` function of `inference.py`, pass in a secondary argument to the script of "default":
 ```
-torchrun inference.py <path/to/saved/model> "default" 
+torchrun inference.py inference_weights/ "default" 
 ```
 
-To run inference with custom prompts, add prompts as additional arguments to the script:
+To run inference with **custom** prompts, add prompts as additional arguments to the script:
 ```
-torchrun inference.py <path/to/saved/model> "The meaning of life is" "What should my second prompt be?" "A computer is"
+torchrun inference.py inference_weights/ "The meaning of life is" "What should my second prompt be?" "A computer is"
 ```
 Note that the maximum sequence length of our trained model is 128 characters.
 
